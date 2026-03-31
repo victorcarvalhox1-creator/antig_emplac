@@ -13,6 +13,7 @@ LOGIN = os.getenv("LOGIN_FEN")
 SENHA = os.getenv("SENHA_FEN")
 
 # --- CONFIGURAÇÕES ---
+ANO_PESQUISA = "2026"       # Ano que será selecionado no site (ex: 2025, 2026)
 MES_PESQUISA = "Março"       # Mês que será selecionado no site (ex: Janeiro, Fevereiro, Março)
 PASTA_COMPETENCIA = "032026" # Nome da pasta onde os arquivos serão salvos
 # ---------------------
@@ -129,8 +130,32 @@ def run():
             "https://www.tela.com.br/inteligencia/Concessionaria/Emplacamento/MeuNegocio",
             wait_until="domcontentloaded"
         )
+        page.wait_for_selector("span#select2-cmbAno-container", timeout=30000)
         page.wait_for_selector("span#select2-cmbMes-container", timeout=30000)
 
+        # Pesquisa pelo ano
+        print(f"Selecting month '{ANO_PESQUISA}'...")
+        selected_year = page.locator("span#select2-cmbAno-container").inner_text().strip()
+        if selected_year == ANO_PESQUISA:
+            print("Target month already selected.")
+        else:
+            # Clicking the span that opens the select2 dropdown
+            page.click("span#select2-cmbAno-container")
+            
+            # Playwright exact text locator for the option list
+            try:
+                # We wait for the dropdown to appear and select the specific month
+                list_item = page.locator("li", has_text=ANO_PESQUISA).first
+                list_item.click(timeout=5000)
+            except Exception as e:
+                print(f"Could not select {ANO_PESQUISA} using select2 container: {e}")
+                # Fallback: try to select directly if it's a native select
+                try:
+                    page.locator("select#cmbAno").select_option(label=ANO_PESQUISA, force=True, timeout=5000)
+                except Exception as select_e:
+                    print(f"Fallback native select failed: {select_e}")
+
+        # Pesquisa pelo mês
         print(f"Selecting month '{MES_PESQUISA}'...")
         selected_month = page.locator("span#select2-cmbMes-container").inner_text().strip()
         if selected_month == MES_PESQUISA:
