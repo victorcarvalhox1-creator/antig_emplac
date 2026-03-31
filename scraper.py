@@ -12,9 +12,10 @@ load_dotenv()
 LOGIN = os.getenv("LOGIN_FEN")
 SENHA = os.getenv("SENHA_FEN")
 
-# --- CONFIGURAÇÕES ---
-MES_PESQUISA = "Março"       # Mês que será selecionado no site (ex: Janeiro, Fevereiro, Março)
-PASTA_COMPETENCIA = "032026" # Nome da pasta onde os arquivos serão salvos
+# --- CONFIGURA��ES ---
+ANO_PESQUISA = "2025"        # Ano que ser� selecionado no site (ex: 2025, 2026)
+MES_PESQUISA = "Julho"       # M�s que ser� selecionado no site (ex: Janeiro, Fevereiro, Mar�o)
+PASTA_COMPETENCIA = "032025" # Nome da pasta onde os arquivos sero salvos
 # ---------------------
 
 def format_excel_file(file_path):
@@ -124,12 +125,30 @@ def run():
             page.wait_for_load_state("domcontentloaded")
             page.wait_for_timeout(3000)
 
-        print("Navigating to 'Meu Negócio' page...")
+        print("Navigating to 'Meu Neg�cio' page...")
         page.goto(
             "https://www.tela.com.br/inteligencia/Concessionaria/Emplacamento/MeuNegocio",
             wait_until="domcontentloaded"
         )
+        page.wait_for_selector("span#select2-cmbAno-container", timeout=30000)
         page.wait_for_selector("span#select2-cmbMes-container", timeout=30000)
+
+        print(f"Selecting year '{ANO_PESQUISA}'...")
+        selected_year = page.locator("span#select2-cmbAno-container").inner_text().strip()
+        if selected_year == ANO_PESQUISA:
+            print("Target year already selected.")
+        else:
+            page.click("span#select2-cmbAno-container")
+
+            try:
+                list_item = page.locator("li", has_text=ANO_PESQUISA).first
+                list_item.click(timeout=5000)
+            except Exception as e:
+                print(f"Could not select {ANO_PESQUISA} using select2 container: {e}")
+                try:
+                    page.locator("select#cmbAno").select_option(label=ANO_PESQUISA, force=True, timeout=5000)
+                except Exception as select_e:
+                    print(f"Fallback native select failed for year: {select_e}")
 
         print(f"Selecting month '{MES_PESQUISA}'...")
         selected_month = page.locator("span#select2-cmbMes-container").inner_text().strip()
@@ -254,6 +273,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
