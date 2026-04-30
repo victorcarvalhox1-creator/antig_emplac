@@ -14,8 +14,8 @@ SENHA = os.getenv("SENHA_FEN")
 
 # --- CONFIGURAÇÕES ---
 ANO_PESQUISA = "2026"       # Ano que será selecionado no site (ex: 2025, 2026)
-MES_PESQUISA = "Março"       # Mês que será selecionado no site (ex: Janeiro, Fevereiro, Março)
-PASTA_COMPETENCIA = "032026" # Nome da pasta onde os arquivos serão salvos
+MES_PESQUISA = "Abril"       # Mês que será selecionado no site (ex: Janeiro, Fevereiro, Março)
+PASTA_COMPETENCIA = "042026" # Nome da pasta onde os arquivos serão salvos
 # ---------------------
 
 def format_excel_file(file_path):
