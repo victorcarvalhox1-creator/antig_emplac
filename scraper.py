@@ -125,7 +125,7 @@ def run():
             page.wait_for_load_state("domcontentloaded")
             page.wait_for_timeout(3000)
 
-        print("Navigating to 'Meu Negócio' page...")
+        print("Navigating to 'Meu Neg�cio' page...")
         page.goto(
             "https://www.tela.com.br/inteligencia/Concessionaria/Emplacamento/MeuNegocio",
             wait_until="domcontentloaded"
@@ -279,9 +279,4 @@ def run():
 
 if __name__ == "__main__":
     run()
-
-
-
-
-
-
+    
