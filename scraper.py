@@ -1,7 +1,6 @@
 ﻿import os
 import time
 import glob
-import calendar
 import traceback
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
@@ -13,42 +12,52 @@ LOGIN = os.getenv("LOGIN_FEN")
 SENHA = os.getenv("SENHA_FEN")
 
 # --- CONFIGURAÇÕES ---
-ANO_PESQUISA = "2026"       # Ano que será selecionado no site (ex: 2025, 2026)
-MES_PESQUISA = "Abril"       # Mês que será selecionado no site (ex: Janeiro, Fevereiro, Março)
-PASTA_COMPETENCIA = "042026" # Nome da pasta onde os arquivos serão salvos
+ANO_PESQUISA = "2025"       # Ano que será selecionado no site (ex: 2025, 2026)
+MES_PESQUISA = "Julho"       # Mês que será selecionado no site (ex: Janeiro, Fevereiro, Março)
+PASTA_COMPETENCIA = "072025" # Nome da pasta onde os arquivos serão salvos
 # ---------------------
 
 def format_excel_file(file_path):
     print(f"Formatting {file_path} to standard structure...")
     try:
-        # Read all as string to preserve precision for CNPJ
+        # header=1 pula a linha de título "Dados de Mercado Personalizados"
+        # Colunas do site: [0]CNPJ [1]Razão Social [2]Emplacamento [3]Chassi
+        #                  [4]Placa [5]Fabricante [6]Modelo [7]Ano Fabricação
+        #                  [8]Estado [9]Município
         df = pd.read_excel(file_path, header=1, dtype=str)
-        if len(df.columns) >= 10:
-            new_cols = [
-                df.columns[0], # A -> A (Data)
-                df.columns[5], # F -> B (Chassis)
-                df.columns[7], # H -> C (Fabricante)
-                df.columns[1], # B -> D (Modelo)
-                df.columns[9], # J -> E (Municipio)
-                df.columns[8], # I -> F (UF)
-                df.columns[3], # D -> CNPJ
-                df.columns[6]  # G -> Placa
-            ]
-            df_formatted = df[new_cols].copy()
-            df_formatted.columns = ['Data', 'Chassis', 'Fabricante', 'Modelo', 'Municipio', 'UF', 'CNPJ', 'Placa']
-            
-            # Insert two blank columns at G and H (indices 6 and 7) with unique space names
-            df_formatted.insert(6, ' ', 1)
-            df_formatted.insert(7, '  ', '')
-            
-            df_formatted.to_excel(file_path, index=False)
-            print(f"Successfully formatted {file_path}")
-        else:
-            print(f"Skipped formatting {file_path}: Does not match expected column structure.")
+        if len(df.columns) < 10:
+            print(f"Skipped formatting {file_path}: only {len(df.columns)} columns.")
+            return
+
+        result = pd.DataFrame()
+        result['Data']        = df.iloc[:, 2]   # Emplacamento
+        result['Chassis']     = df.iloc[:, 3]   # Chassi
+        result['Fabricante']  = df.iloc[:, 5]   # Fabricante
+        result['Modelo']      = df.iloc[:, 6]   # Modelo
+        result['Municipio']   = df.iloc[:, 9]   # Município
+        result['UF']          = df.iloc[:, 8]   # Estado
+        result['Segmento']    = '1'
+
+        # Sub Segmento = Fabricante + primeiro token do modelo após "/"
+        # Ex: "FIAT/DOBLO ADV 1.8 FLEX" -> "FIAT DOBLO"
+        #     "I/BYD DOLPHIN MINI GS EV" com Fabricante=BYD -> "BYD BYD"
+        def sub_segmento(row):
+            fab   = str(row['Fabricante']).strip()
+            model = str(row['Modelo']).strip()
+            token = model.split('/', 1)[1].split()[0] if '/' in model else model.split()[0]
+            return f"{fab} {token}"
+
+        result['Sub Segmento'] = result.apply(sub_segmento, axis=1)
+        result['DN ou CNPJ']   = df.iloc[:, 0]  # CNPJ
+        result['Ano Fab.']     = df.iloc[:, 7]  # Ano Fabricação
+        result['Tipo']         = df.iloc[:, 3].astype(str) + '/' + df.iloc[:, 4].astype(str)  # Chassi/Placa
+
+        result.to_excel(file_path, index=False)
+        print(f"Successfully formatted {file_path}")
     except Exception as e:
         print(f"Failed to format {file_path}: {e}")
 
-def combine_spreadsheets(outros_qtd=0):
+def combine_spreadsheets():
     print("Combining all formatted spreadsheets...")
     try:
         target_dir = f"downloads/{PASTA_COMPETENCIA}"
@@ -64,30 +73,6 @@ def combine_spreadsheets(outros_qtd=0):
 
         if df_list:
             combined_df = pd.concat(df_list, ignore_index=True)
-            
-            if outros_qtd > 0:
-                try:
-                    month = int(PASTA_COMPETENCIA[:2])
-                    year = int(PASTA_COMPETENCIA[2:])
-                    last_day = calendar.monthrange(year, month)[1]
-                    data_str = f"{last_day:02d}/{month:02d}/{year}"
-                except Exception:
-                    data_str = "31/12/2099"
-                
-                outros_row = pd.DataFrame([{
-                    'Data': data_str,
-                    'Chassis': 'outros',
-                    'Fabricante': 'outros',
-                    'Modelo': 'outros',
-                    'Municipio': 'outros',
-                    'UF': 'outros',
-                    ' ': outros_qtd,
-                    '  ': 'outros',
-                    'CNPJ': 'outros',
-                    'Placa': 'outros'
-                }])
-                combined_df = pd.concat([combined_df, outros_row], ignore_index=True)
-                
             out_path = f"{target_dir}/consolidado.xlsx"
             combined_df.to_excel(out_path, index=False)
             print(f"Successfully created {out_path} with {len(all_files)} files combined.")
@@ -125,66 +110,38 @@ def run():
             page.wait_for_load_state("domcontentloaded")
             page.wait_for_timeout(3000)
 
-        print("Navigating to 'Meu Neg�cio' page...")
+        print("Navigating to 'Meu Negócio' page...")
         page.goto(
-            "https://www.tela.com.br/inteligencia/Concessionaria/Emplacamento/MeuNegocio",
+            "https://www.tela.com.br/inteligencia/Concessionaria/Emplacamento/ShareRanking",
             wait_until="domcontentloaded"
         )
-        page.wait_for_selector("span#select2-cmbAno-container", timeout=30000)
-        page.wait_for_selector("span#select2-cmbMes-container", timeout=30000)
+        page.wait_for_selector("select#cmbAno", timeout=30000)
 
-        # Pesquisa pelo ano
-        print(f"Selecting month '{ANO_PESQUISA}'...")
-        selected_year = page.locator("span#select2-cmbAno-container").inner_text().strip()
-        if selected_year == ANO_PESQUISA:
-            print("Target month already selected.")
-        else:
-            # Clicking the span that opens the select2 dropdown
-            page.click("span#select2-cmbAno-container")
-            
-            # Playwright exact text locator for the option list
-            try:
-                # We wait for the dropdown to appear and select the specific month
-                list_item = page.locator("li", has_text=ANO_PESQUISA).first
-                list_item.click(timeout=5000)
-            except Exception as e:
-                print(f"Could not select {ANO_PESQUISA} using select2 container: {e}")
-                # Fallback: try to select directly if it's a native select
-                try:
-                    page.locator("select#cmbAno").select_option(label=ANO_PESQUISA, force=True, timeout=5000)
-                except Exception as select_e:
-                    print(f"Fallback native select failed: {select_e}")
+        print(f"Selecting year '{ANO_PESQUISA}'...")
+        page.locator("select#cmbAno").select_option(label=ANO_PESQUISA)
+        # Aguarda o AJAX do ano completar: o mês é resetado para "0" pelo servidor
+        page.wait_for_function(
+            "document.getElementById('cmbMes').value === '0'",
+            timeout=10000
+        )
 
-        # Pesquisa pelo mês
         print(f"Selecting month '{MES_PESQUISA}'...")
-        selected_month = page.locator("span#select2-cmbMes-container").inner_text().strip()
-        if selected_month == MES_PESQUISA:
-            print("Target month already selected.")
-        else:
-            # Clicking the span that opens the select2 dropdown
-            page.click("span#select2-cmbMes-container")
-            
-            # Playwright exact text locator for the option list
-            try:
-                # We wait for the dropdown to appear and select the specific month
-                list_item = page.locator("li", has_text=MES_PESQUISA).first
-                list_item.click(timeout=5000)
-            except Exception as e:
-                print(f"Could not select {MES_PESQUISA} using select2 container: {e}")
-                # Fallback: try to select directly if it's a native select
-                try:
-                    page.locator("select#cmbMes").select_option(label=MES_PESQUISA, force=True, timeout=5000)
-                except Exception as select_e:
-                    print(f"Fallback native select failed: {select_e}")
+        page.locator("select#cmbMes").select_option(label=MES_PESQUISA)
+        # Aguarda o AJAX do mês completar: o dia é resetado para "0" pelo servidor
+        page.wait_for_function(
+            "document.getElementById('cmbDia').value === '0'",
+            timeout=10000
+        )
+
+        print("Selecting day 'Todos'...")
+        page.locator("select#cmbDia").select_option(value="")
 
         print("Clicking search...")
         page.click("a#btnPesquisar")
         
-        print("Waiting for table to load...")
-        # Waiting for the specific table class or id
-        # <table class="table table-condensed table-bordered" ...
+        print("Waiting for brands table to load...")
         try:
-            page.wait_for_selector("table.table-condensed", timeout=15000)
+            page.wait_for_selector("#divTab1 table tbody tr", timeout=15000)
         except Exception:
             print("Table didn't load in time, but proceeding to see if elements exist.")
 
@@ -197,60 +154,69 @@ def run():
         time.sleep(8)
 
         print("Extracting brands list...")
-        # Elements like: <a href="#" id="marcaarea" class="clickMarcaArea" data-id="JEEP">480</a>
-        brand_links = page.locator("a.clickMarcaArea").all()
-        
-        print(f"Found {len(brand_links)} brand targets to process.")
-        
+        # Links like: <a href="javascript:chamaDetalhe('FIAT');">FIAT</a> inside #divTab1
+        brand_elements = page.locator("#divTab1 table tbody tr td a").all()
+        brand_names = []
+        for elem in brand_elements:
+            href = elem.get_attribute("href") or ""
+            if "chamaDetalhe" in href:
+                name = elem.inner_text().strip()
+                if name and name.lower() != "total":
+                    brand_names.append(name)
+
+        print(f"Found {len(brand_names)} brands to process.")
+
         target_dir = f"downloads/{PASTA_COMPETENCIA}"
         os.makedirs(target_dir, exist_ok=True)
 
-        print("Extracting 'Outros' quantity...")
-        outros_qtd = 0
-        try:
-            outros_row = page.locator("xpath=//tr[td[normalize-space(text())='Outros']]").first
-            outros_qtd_text = outros_row.locator("td").nth(2).inner_text()
-            outros_qtd = int(outros_qtd_text.strip())
-            print(f"'Outros' quantity found: {outros_qtd}")
-        except Exception as e:
-            print(f"Could not extract 'Outros' quantity: {e}")
-
-        for i in range(len(brand_links)):
-            # Re-read elements directly to avoid stale element reference if the DOM refreshes
-            link = page.locator("a.clickMarcaArea").nth(i)
-            brand_name = link.get_attribute("data-id")
-            if not brand_name:
-                brand_name = f"marca_{i}"
-                
+        for brand_name in brand_names:
             print(f"Processing brand: {brand_name}")
-            
-            # Click the brand to trigger whatever action (e.g., opening a modal)
-            link.click()
-            time.sleep(2)
-
-            # Look for Excel export button and wait for download
-            # <span>Excel</span>
-            print(f"Downloading Excel spreadsheet for {brand_name}...")
             try:
-                with page.expect_download(timeout=10000) as download_info:
-                    # Depending on how it's structured, we might search for text 'Excel'
-                    page.locator("span", has_text="Excel").first.click()
-                
+                # Click the brand link in divTab1 — href="javascript:chamaDetalhe('BRAND');"
+                brand_link = page.locator(f"#divTab1 table tbody tr td a[href*=\"chamaDetalhe\"]").filter(has_text=brand_name).first
+                brand_link.click()
+
+                # Aguarda divTab2 carregar com o Total desta marca específica
+                # (não usa wait_for_selector genérico pois divTab2 já existe com dados da marca anterior)
+                total_selector = f"a[href*=\"chamaDescritivo('Total', '{brand_name}')\"]"
+                page.wait_for_selector(total_selector, timeout=15000)
+
+                # Clica no Total desta marca
+                page.locator(total_selector).first.click()
+                time.sleep(2)
+
+                # Aguarda o botão Excel da tabela de detalhes
+                page.wait_for_selector("button.buttons-excel", timeout=20000)
+                time.sleep(1)
+
+                print(f"Downloading Excel for {brand_name}...")
+                with page.expect_download(timeout=30000) as download_info:
+                    page.locator("button.buttons-excel").first.click()
+
                 download = download_info.value
                 file_path = f"{target_dir}/{brand_name}_relatorio.xlsx"
                 download.save_as(file_path)
                 print(f"Successfully saved {file_path}")
-                
-                # Format the excel file automatically after saving
                 format_excel_file(file_path)
+
+                # Volta para a lista de marcas — usa setTimeout para evitar que o evaluate
+                # bloqueie aguardando estado de rede pendente do download anterior
+                page.evaluate("setTimeout(function(){ voltaTabelas(); }, 300)")
+                page.wait_for_selector("#divTab1 table tbody tr", state="visible", timeout=15000)
+                time.sleep(1)
+
             except Exception as e:
-                print(f"Failed to download Excel for {brand_name}: {e}")
-            
-            # In some systems we need to explicitly close the modal or wait before the next click
-            time.sleep(1)
+                print(f"Failed processing {brand_name}: {e}")
+                # Tenta recuperar voltando para a lista caso esteja preso na view de detalhe
+                try:
+                    page.evaluate("setTimeout(function(){ if(typeof voltaTabelas==='function') voltaTabelas(); }, 300)")
+                    page.wait_for_selector("#divTab1 table tbody tr", state="visible", timeout=10000)
+                    time.sleep(1)
+                except Exception:
+                    pass
 
         print("All downloads completed! Closing browser.")
-        combine_spreadsheets(outros_qtd)
+        combine_spreadsheets()
     except Exception:
         print("Scraper failed. Full traceback:")
         traceback.print_exc()

@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__wait_for",
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__navigate_page",
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__evaluate_script",
+      "Bash(.\\\\venv\\\\Scripts\\\\python.exe scraper.py)",
+      "Bash(Get-Content \"C:\\\\Users\\\\Contrato\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\g--Meu-Drive-Victor-Projetos-aut-datadealer-antig-emplac\\\\82adabfa-6bb1-4d4d-97f0-26746e28ae51\\\\tasks\\\\bu8dmr44y.output\" -Wait)",
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__click"
+    ]
+  }
+}
